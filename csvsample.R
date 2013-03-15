@@ -7,11 +7,11 @@
 #the exact script will be running on each node but using node ID to identify
 #which csv file should be read
 
-#load csv file paths
+#find csv file paths
 load("~/hw4/csvpath.rda")
 
 #obtain the specific csv file to be operated on
-csvid = Sys.getenv('SGE_TASK_ID')
+csvid = as.numeric(Sys.getenv('SGE_TASK_ID'))
 csvfile = csvpath[csvid]
 
 #read all lines of the csv file, omitting first line which is the column names
