@@ -10,6 +10,7 @@ majorap = c("ATL", "ORD", "LAX", "DFW", "DEN", "JFK", "SFO", "LAS", "PHX",
             "SAN", "TPA")
 majorcarrier = c("FL", "AS", "AA", "MQ", "EV", "OH", "CO", "DL", "F9", "HA", 
                 "B6", "YV", "OO", "WN", "NK", "UA", "US", "WO")
+
 checkmajor = function(df, ap = majorap, carrier = majorcarrier){
   df$MainAP = (df$Origin %in% ap) | (df$Dest %in% ap)
   df$MainCarrier = df$UniqueCarrier %in% carrier
@@ -19,26 +20,58 @@ checkmajor = function(df, ap = majorap, carrier = majorcarrier){
 samplelist = lapply(samplelist, function(x)checkmajor(df = x))
 sampledf = do.call("rbind", samplelist)
 
+#generate randomForest in a parallelized way
+library(doSNOW)
 
+cl = makeCluster(3)
+clusterSetupSPRNG(cl)
 
+#function to ask each worker generate one tree at a time
+rfworker = function(cl, df, samsize, treenum){
+  clusterEvalQ(cl, library(randomForest))
+  n = nrow(df)
+  indmat = matrix(sample(1:n, size = samsize*treenum, replace = TRUE), nrow = samsize, ncol = treenum)
+  res = parApply(cl, indmat, 2, function(ind){randomForest(ArrDelay~., data = df[ind,], 
+                                                          ntree = 1, na.action = na.omit)})
+  class(res) = c("ClusterRF", "list")
+  res
+}
 
+rf = rfworker(cl, sampledf, 10000, 500)
 
-foo = do.call("rbind", bob[1:2])
-foo$Cancelled = as.logical(foo$Cancelled)
-bar = foo[sample(1:nrow(foo), size = 10000, replace = TRUE),]
+#function to create an RF with half randomly picked variable at the beginning of fitting each tree
+rfworker.randvar = function(cl, df, samsize, treenum){
+  clusterEvalQ(cl, library(randomForest))
+  n = nrow(df)
+  indmat = matrix(sample(1:n, size = samsize*treenum, replace = TRUE), nrow = samsize, ncol = treenum)
+  varmat = replicate(treenum, sample(c(1:10, 12:15), size = 7, replace = FALSE))
+  res = parLapply(cl, 1:treenum, function(i){randomForest(ArrDelay~., data = df[indmat[,i],c(varmat[,i],11)], 
+                                                          ntree = 1, na.action = na.omit)})
+  class(res) = c("ClusterRF", "list")
+  res
+}
 
-library(randomForest)
-library(parallel)
+rf.randvar = rfworker.randvar(cl, sampledf, 10000, 500)
 
-cl = makeCluster(3, type = "FORK")
-clusterSetRNGStream(cl, 2)
-tmp = clusterCall(cl, randomForest, 
-                  formula = ArrDelay~., data = bar, ntree = 10, na.action = na.omit)
-tmp2 = parLapply(cl, 1:2, function(i)predict(tmp[[i]], newdata = foo[1:100,], na.action = na.omit))
 stopCluster(cl)
 
+#prediction method for ClusterRF objects
+predict.ClusterRF = function(object, newdata, cl, ...){
+  clusterEvalQ(cl, library(randomForest))
+  pred = parLapply(cl, object, predict, newdata = newdata)
+  pred = do.call("cbind", pred)
+  pred = colMeans(pred)
+  pred
+}
 
+#test the two randomForests
+newdf = sampledf[sample(1:nrow(sampledf), size = 10000, replace = FALSE),]
 
+cl = makeCluster(3)
+clusterSetupSPRNG(cl)
+pred.rf = predict(object = rf, newdata = newdf, cl)
+pred.randvar = predict(object = rf.randvar, newdata = newdf, cl)
+stopCluster(cl)
 
 
 
