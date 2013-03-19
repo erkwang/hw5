@@ -60,7 +60,7 @@ predict.ClusterRF = function(object, newdata, cl, ...){
   clusterEvalQ(cl, library(randomForest))
   pred = parLapply(cl, object, predict, newdata = newdata)
   pred = do.call("cbind", pred)
-  pred = colMeans(pred)
+  pred = rowMeans(pred, na.rm = TRUE)
   pred
 }
 
@@ -73,6 +73,6 @@ pred.rf = predict(object = rf, newdata = newdf, cl)
 pred.randvar = predict(object = rf.randvar, newdata = newdf, cl)
 stopCluster(cl)
 
-
-
-
+#obtain MSPE
+mspe.rf = sum((pred.rf - newdf[,"ArrDelay"])^2, na.rm = TRUE)/sum(!is.na(pred.rf))
+mspe.randvar = sum((pred.randvar - newdf[,"ArrDelay"])^2, na.rm = TRUE)/sum(!is.na(pred.randvar))

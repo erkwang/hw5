@@ -34,16 +34,3 @@ writeLines(text = csvsample, con = writecon)
 close(writecon)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
